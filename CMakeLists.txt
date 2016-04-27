@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 2.8)
+project(sup-c)
+file(GLOB_RECURSE src/*.c)
+add_executable(sup-c ${src_files})
+target_link_libraries(sup-c)
+install(TARGETS sup-c RUNTIME DESTINATION usr/bin)
