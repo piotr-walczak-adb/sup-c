@@ -1,17 +1,42 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "mongoose.h"
 
-#include "mongoose.h"  // Include Mongoose API definitions
+static const char *s_http_port = "8000";
 
-// Define an event handler function
+static int rpc_sum(char *buf, int len, struct mg_rpc_request *req) {
+  double sum = 0;
+  int i;
+
+  if (req->params[0].type != JSON_TYPE_ARRAY) {
+    return mg_rpc_create_std_error(buf, len, req,
+                                   JSON_RPC_INVALID_PARAMS_ERROR);
+  }
+
+  for (i = 0; i < req->params[0].num_desc; i++) {
+    if (req->params[i + 1].type != JSON_TYPE_NUMBER) {
+      return mg_rpc_create_std_error(buf, len, req,
+                                     JSON_RPC_INVALID_PARAMS_ERROR);
+    }
+    sum += strtod(req->params[i + 1].ptr, NULL);
+  }
+  return mg_rpc_create_reply(buf, len, req, "f", sum);
+}
+
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
-  struct mbuf *io = &nc->recv_mbuf;
+  struct http_message *hm = (struct http_message *) ev_data;
+  static const char *methods[] = { "sum", NULL };
+  static mg_rpc_handler_t handlers[] = { rpc_sum, NULL };
+  char buf[100];
 
   switch (ev) {
-    case MG_EV_RECV:
-      // This event handler implements simple TCP echo server
-      mg_send(nc, io->buf, io->len);  // Echo received data back
-      mbuf_remove(io, io->len);      // Discard data from recv buffer
+    case MG_EV_HTTP_REQUEST:
+      mg_rpc_dispatch(hm->body.p, hm->body.len, buf, sizeof(buf),
+                      methods, handlers);
+      mg_printf(nc, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\n"
+                "Content-Type: application/json\r\n\r\n%s",
+                (int) strlen(buf), buf);
+      nc->flags |= MG_F_SEND_AND_CLOSE;
       break;
     default:
       break;
@@ -20,17 +45,17 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
 
 int main(void) {
   struct mg_mgr mgr;
+  struct mg_connection *nc;
 
-  mg_mgr_init(&mgr, NULL);  // Initialize event manager object
+  mg_mgr_init(&mgr, NULL);
+  nc = mg_bind(&mgr, s_http_port, ev_handler);
+  mg_set_protocol_http_websocket(nc);
 
-  // Note that many connections can be added to a single event manager
-  // Connections can be created at any point, e.g. in event handler function
-  mg_bind(&mgr, "1234", ev_handler);  // Create listening connection and add it to the event manager
-
-  for (;;) {  // Start infinite event loop
+  printf("Starting JSON-RPC server on port %s\n", s_http_port);
+  for (;;) {
     mg_mgr_poll(&mgr, 1000);
   }
-
   mg_mgr_free(&mgr);
+
   return 0;
 }
