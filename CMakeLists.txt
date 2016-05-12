@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 project(adb-player)
-file(GLOB SOURCES src/*.c)
+file(GLOB SOURCES src/*.c src/*.h)
 add_executable(adb-player ${SOURCES})
 target_link_libraries(adb-player)
 install(TARGETS adb-player RUNTIME DESTINATION /usr/bin)
